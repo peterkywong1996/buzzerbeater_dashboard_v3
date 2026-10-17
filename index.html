@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-TW" :class="{ 'dark': isDark }">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BuzzerBeater Dashboard v6</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; }
+        
+        /* 輸入框 */
+        .input-cell { 
+            width: 45px; text-align: center; border: 1px solid #d1d5db; border-radius: 4px; padding: 2px; 
+            background-color: #ffffff; color: #1f2937; 
+        }
+        .dark .input-cell {
+            background-color: #0f172a; color: #f8fafc; border-color: #475569;
+        }
+        .input-cell:focus { outline: 2px solid #3b82f6; border-color: transparent; }
+        
+        /* 陣容槽位 */
+        .slot-empty { border: 2px dashed #d1d5db; background-color: #f9fafb; }
+        .dark .slot-empty { border-color: #475569; background-color: #0f172a; }
+        .slot-filled { border: 2px solid #10b981; background-color: #ecfdf5; }
+        .dark .slot-filled { background-color: #064e3b; }
+        
+        /* 球員卡片 */
+        .player-card { background-color: #f9fafb; border: 1px solid #e5e7eb; transition: all 0.2s; }
+        .dark .player-card { background-color: #1e293b; border-color: #334155; }
+        .player-card:hover { background-color: #f3f4f6; transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .dark .player-card:hover { background-color: #334155; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); }
+        
+        /* Tab 樣式 */
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #2563eb; font-weight: bold; }
+        .dark .tab-active { color: #60a5fa; }
+        
+        /* 滾動條 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f3f4f6; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+        .dark ::-webkit-scrollbar-track { background: #1e293b; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100 transition-colors duration-300">
+<div id="app" v-cloak class="container mx-auto p-4 max-w-[1400px]">
+    <!-- Header -->
+    <header class="mb-6 flex justify-between items-center">
+        <div class="text-center flex-1">
+            <h1 class="text-3xl font-bold text-blue-600 dark:text-blue-400">🏀 BuzzerBeater Dashboard v6</h1>
+            <p class="text-gray-500 dark:text-slate-400">深度分析 · 陣容編排 · 戰術推薦 · 雙主題</p>
+        </div>
+        <button @click="toggleTheme" class="p-2 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm hover:bg-gray-100 dark:hover:bg-slate-700 transition">
+            <span v-if="isDark" class="text-xl">☀️</span>
+            <span v-else class="text-xl">🌙</span>
+        </button>
+    </header>
+
+    <!-- Tabs -->
+    <div class="flex border-b border-gray-200 dark:border-slate-700 mb-6 bg-white dark:bg-slate-800 rounded-t-lg px-4">
+        <button @click="currentTab = 'management'" :class="{'tab-active': currentTab === 'management'}" class="px-6 py-3 text-gray-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition">📋 球員管理</button>
+        <button @click="currentTab = 'lineup_analysis'" :class="{'tab-active': currentTab === 'lineup_analysis'}" class="px-6 py-3 text-gray-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition">📝 陣容編排與分析</button>
+    </div>
+
+    <!-- Tab 1: Player Management -->
+    <div v-if="currentTab === 'management'" class="bg-white dark:bg-slate-800 p-4 rounded-b-lg shadow-xl border border-gray-200 dark:border-slate-700">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold">球員能力與狀態管理</h2>
+            <button @click="resetData" class="bg-red-500 dark:bg-red-600 hover:bg-red-600 dark:hover:bg-red-700 text-white px-4 py-2 rounded text-sm transition">🔄 重置為初始數據</button>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 dark:border-slate-700 rounded-lg">
+            <table class="min-w-full text-xs">
+                <thead>
+                    <tr class="bg-gray-100 dark:bg-slate-700 text-center">
+                        <th colspan="6" class="p-2 border-r border-gray-200 dark:border-slate-600">基本信息</th>
+                        <th colspan="6" class="p-2 border-r border-gray-200 dark:border-slate-600 bg-green-100 dark:bg-green-900/30">外線能力</th>
+                        <th colspan="4" class="p-2 border-r border-gray-200 dark:border-slate-600 bg-red-100 dark:bg-red-900/30">內線能力</th>
+                        <th colspan="3" class="p-2 border-r border-gray-200 dark:border-slate-600 bg-yellow-100 dark:bg-yellow-900/30">其他</th>
+                        <th colspan="3" class="p-2 bg-blue-100 dark:bg-blue-900/30">計算值</th>
+                    </tr>
+                    <tr class="bg-gray-50 dark:bg-slate-700/50 text-center text-gray-700 dark:text-slate-300">
+                        <th class="p-2">暱稱</th><th class="p-2">名稱</th><th class="p-2">年齡</th><th class="p-2">身高</th><th class="p-2">狀態</th><th class="p-2 border-r border-gray-200 dark:border-slate-600">時間</th>
+                        <th class="p-2">跳投</th><th class="p-2">範圍</th><th class="p-2">外防</th><th class="p-2">控球</th><th class="p-2">運球</th><th class="p-2 border-r border-gray-200 dark:border-slate-600">傳球</th>
+                        <th class="p-2">內投</th><th class="p-2">內防</th><th class="p-2">籃板</th><th class="p-2 border-r border-gray-200 dark:border-slate-600">封截</th>
+                        <th class="p-2">體能</th><th class="p-2">罰球</th><th class="p-2 border-r border-gray-200 dark:border-slate-600">經驗</th>
+                        <th class="p-2">外線</th><th class="p-2">內線</th><th class="p-2">總和</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="p in players" :key="p.id" class="border-t border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700/30 text-center">
+                        <td class="p-2 font-semibold text-blue-600 dark:text-blue-400 text-left">{{ p.nick }}</td>
+                        <td class="p-2 text-left text-gray-800 dark:text-slate-200">{{ p.name }}</td>
+                        <td class="p-2 text-gray-700 dark:text-slate-300">{{ p.age }}</td>
+                        <td class="p-2 text-gray-700 dark:text-slate-300">{{ p.height }}</td>
+                        <td class="p-2"><input type="number" v-model.number="p.form" min="0" max="10" class="input-cell"></td>
+                        <td class="p-2 border-r border-gray-200 dark:border-slate-700"><input type="number" v-model.number="p.mins" min="0" max="48" class="input-cell"></td>
+                        
+                        <td class="p-2"><input type="number" v-model.number="p.jump" min="0" class="input-cell"></td>
+                        <td class="p-2"><input type="number" v-model.number="p.range" min="0" class="input-cell"></td>
+                        <td class="p-2"><input type="number" v-model.number="p.outDef" min="0" class="input-cell"></td>
+                        <td class="p-2"><input type="number" v-model.number="p.ballHandle" min="0" class="input-cell"></td>
+                        <td class="p-2"><input type="number" v-model.number="p.dribble" min="0" class="input-cell"></td>
+                        <td class="p-2 border-r border-gray-200 dark:border-slate-700"><input type="number" v-model.number="p.passing" min="0" class="input-cell"></td>
+                        
+                        <td class="p-2"><input type="number" v-model.number="p.insideShot" min="0" class="input-cell"></td>
+                        <td class="p-2"><input type="number" v-model.number="p.insideDef" min="0" class="input-cell"></td>
+                        <td class="p-2"><input type="number" v-model.number="p.rebound" min="0" class="input-cell"></td>
+                        <td class="p-2 border-r border-gray-200 dark:border-slate-700"><input type="number" v-model.number="p.shotBlock" min="0" class="input-cell"></td>
+                        
+                        <td class="p-2"><input type="number" v-model.number="p.stamina" min="0" class="input-cell"></td>
+                        <td class="p-2"><input type="number" v-model.number="p.ft" min="0" class="input-cell"></td>
+                        <td class="p-2 border-r border-gray-200 dark:border-slate-700"><input type="number" v-model.number="p.exp" min="0" class="input-cell"></td>
+                        
+                        <td class="p-2 font-bold text-green-600 dark:text-green-400">{{ calcOutside(p) }}</td>
+                        <td class="p-2 font-bold text-red-600 dark:text-red-400">{{ calcInside(p) }}</td>
+                        <td class="p-2 font-bold text-blue-600 dark:text-blue-400">{{ calcTotal(p) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-3 text-xs text-gray-500 dark:text-slate-400">💡 提示：修改任何數值或編排陣容後，都會自動保存至本地瀏覽器。</p>
+    </div>
+
+    <!-- Tab 2: Lineup & Analysis -->
+    <div v-if="currentTab === 'lineup_analysis'" class="space-y-6">
+        <!-- Lineup Selector -->
+        <div class="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700 flex items-center justify-between">
+            <h2 class="text-xl font-bold">陣容編排與深度分析</h2>
+            <div>
+                <label class="font-semibold mr-2 text-gray-700 dark:text-slate-300">當前分析陣容：</label>
+                <select v-model.number="currentLineup" class="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-blue-600 dark:text-blue-400 rounded p-2 font-bold focus:ring-blue-500">
+                    <option v-for="(l, idx) in lineups" :value="idx">陣容 {{ idx + 1 }}</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Lineup Builder -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Player Pool -->
+            <div class="lg:col-span-1 bg-white dark:bg-slate-800 p-4 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700">
+                <h3 class="text-lg font-bold mb-2">球員池 (點擊或拖曳)</h3>
+                <div class="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                    <div v-for="p in players" :key="p.id" 
+                         draggable="true" 
+                         @dragstart="dragStart($event, p)"
+                         @click="quickAssign(p)"
+                         class="player-card p-2 rounded cursor-pointer flex justify-between items-center text-sm">
+                        <div>
+                            <span class="font-bold text-blue-600 dark:text-blue-400">{{ p.nick }}</span>
+                            <span class="text-gray-500 dark:text-slate-400 ml-1">{{ p.name }}</span>
+                        </div>
+                        <div class="text-xs text-gray-400 dark:text-slate-500">
+                            外:{{ calcOutside(p) }} | 內:{{ calcInside(p) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Court / Positions -->
+            <div class="lg:col-span-2 bg-white dark:bg-slate-800 p-4 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700">
+                <h3 class="text-lg font-bold mb-2">陣容 {{ currentLineup + 1 }} 編排</h3>
+                <div class="grid grid-cols-5 gap-2">
+                    <div v-for="pos in positions" :key="pos" class="border border-gray-200 dark:border-slate-700 rounded p-2 bg-gray-50 dark:bg-slate-900/50">
+                        <h4 class="text-center font-bold text-gray-700 dark:text-slate-300 mb-2 bg-gray-100 dark:bg-slate-700 rounded py-1 text-sm">{{ pos }}</h4>
+                        <div v-for="role in roles" :key="role" 
+                             class="mb-2 p-2 rounded min-h-[60px] flex flex-col justify-center items-center text-xs"
+                             :class="getLineupPlayer(currentLineup, pos, role) ? 'slot-filled' : 'slot-empty'"
+                             @dragover.prevent
+                             @drop="dropPlayer($event, pos, role)">
+                            <div class="font-semibold text-gray-500 dark:text-slate-400 mb-1">{{ role }}</div>
+                            <div v-if="getLineupPlayer(currentLineup, pos, role)" class="text-center">
+                                <div class="font-bold text-blue-700 dark:text-blue-300">{{ getLineupPlayer(currentLineup, pos, role).nick }}</div>
+                                <button @click="removePlayer(pos, role)" class="text-red-600 dark:text-red-400 hover:underline text-[10px]">移除</button>
+                            </div>
+                            <div v-else class="text-gray-400 dark:text-slate-600">空</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lineup Comparison (前置) -->
+        <div class="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700">
+            <h3 class="text-lg font-bold mb-4">陣容對比分析</h3>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="font-semibold text-gray-700 dark:text-slate-300">陣容 A：</label>
+                    <select v-model.number="compareA" class="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-blue-600 dark:text-blue-400 rounded p-1 ml-2">
+                        <option v-for="(l, idx) in lineups" :value="idx">陣容 {{ idx + 1 }}</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="font-semibold text-gray-700 dark:text-slate-300">陣容 B：</label>
+                    <select v-model.number="compareB" class="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-red-600 dark:text-red-400 rounded p-1 ml-2">
+                        <option v-for="(l, idx) in lineups" :value="idx">陣容 {{ idx + 1 }}</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- 內外線核心指標對比 Summary -->
+            <div class="overflow-x-auto border border-gray-200 dark:border-slate-700 rounded-lg mb-6">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-100 dark:bg-slate-700">
+                        <tr>
+                            <th class="p-2 text-left text-gray-700 dark:text-slate-300">核心攻防指標</th>
+                            <th class="p-2 text-gray-700 dark:text-slate-300">陣容 A (總/均)</th>
+                            <th class="p-2 text-gray-700 dark:text-slate-300">陣容 B (總/均)</th>
+                            <th class="p-2 text-gray-700 dark:text-slate-300">差異 (A-B)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="border-b border-gray-200 dark:border-slate-700">
+                            <td class="p-2 font-bold text-green-600 dark:text-green-400">🟢 外線能力</td>
+                            <td class="p-2 text-center text-gray-700 dark:text-slate-300">{{ getComparisonSummary().out.sumA }} / <b class="text-blue-600 dark:text-blue-400">{{ getComparisonSummary().out.avgA }}</b></td>
+                            <td class="p-2 text-center text-gray-700 dark:text-slate-300">{{ getComparisonSummary().out.sumB }} / <b class="text-red-600 dark:text-red-400">{{ getComparisonSummary().out.avgB }}</b></td>
+                            <td class="p-2 text-center font-bold" :class="parseFloat(getComparisonSummary().out.diffAvg) > 0 ? 'text-green-600 dark:text-green-400' : (parseFloat(getComparisonSummary().out.diffAvg) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-slate-500')">
+                                {{ getComparisonSummary().out.diffAvg > 0 ? '+' : '' }}{{ getComparisonSummary().out.diffAvg }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="p-2 font-bold text-red-600 dark:text-red-400">🔴 內線能力</td>
+                            <td class="p-2 text-center text-gray-700 dark:text-slate-300">{{ getComparisonSummary().in.sumA }} / <b class="text-blue-600 dark:text-blue-400">{{ getComparisonSummary().in.avgA }}</b></td>
+                            <td class="p-2 text-center text-gray-700 dark:text-slate-300">{{ getComparisonSummary().in.sumB }} / <b class="text-red-600 dark:text-red-400">{{ getComparisonSummary().in.avgB }}</b></td>
+                            <td class="p-2 text-center font-bold" :class="parseFloat(getComparisonSummary().in.diffAvg) > 0 ? 'text-green-600 dark:text-green-400' : (parseFloat(getComparisonSummary().in.diffAvg) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-slate-500')">
+                                {{ getComparisonSummary().in.diffAvg > 0 ? '+' : '' }}{{ getComparisonSummary().in.diffAvg }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Comparison Table -->
+                <div class="overflow-x-auto border border-gray-200 dark:border-slate-700 rounded-lg">
+                    <table class="min-w-full text-xs">
+                        <thead class="bg-gray-100 dark:bg-slate-700">
+                            <tr>
+                                <th class="p-2 text-left text-gray-700 dark:text-slate-300">單項指標</th>
+                                <th class="p-2 text-gray-700 dark:text-slate-300">陣容 A (總/均)</th>
+                                <th class="p-2 text-gray-700 dark:text-slate-300">陣容 B (總/均)</th>
+                                <th class="p-2 text-gray-700 dark:text-slate-300">差異 (A-B)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="row in getComparisonData()" :key="row.key" class="border-b border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700/30">
+                                <td class="p-2 font-semibold text-gray-800 dark:text-slate-200">{{ row.label }}</td>
+                                <td class="p-2 text-center text-gray-700 dark:text-slate-300">{{ row.sumA }} / <span class="font-bold text-blue-600 dark:text-blue-400">{{ row.avgA }}</span></td>
+                                <td class="p-2 text-center text-gray-700 dark:text-slate-300">{{ row.sumB }} / <span class="font-bold text-red-600 dark:text-red-400">{{ row.avgB }}</span></td>
+                                <td class="p-2 text-center font-bold" :class="parseFloat(row.diff) > 0 ? 'text-green-600 dark:text-green-400' : (parseFloat(row.diff) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-slate-500')">
+                                    {{ row.diff > 0 ? '+' : '' }}{{ row.diff }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Comparison Radar Chart -->
+                <div class="h-80 flex items-center justify-center">
+                    <canvas id="compareChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Stats & Tactics -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Detailed Stats -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700">
+                <h3 class="text-lg font-bold mb-3">陣容 {{ currentLineup + 1 }} 詳細指標 (首發)</h3>
+                <div class="h-64 mb-4"><canvas id="radarChart"></canvas></div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-xs border border-gray-200 dark:border-slate-700">
+                        <thead class="bg-gray-100 dark:bg-slate-700">
+                            <tr>
+                                <th class="p-2 border-b border-gray-200 dark:border-slate-600 text-left text-gray-700 dark:text-slate-300">指標分類</th>
+                                <th class="p-2 border-b border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300">總和</th>
+                                <th class="p-2 border-b border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300">平均</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="group in statGroups" :key="group.label" class="border-b border-gray-200 dark:border-slate-700 last:border-0 hover:bg-gray-100 dark:hover:bg-slate-700/30">
+                                <td class="p-2 font-semibold" :class="group.color">{{ group.label }}</td>
+                                <td class="p-2 text-center text-gray-700 dark:text-slate-300">{{ getGroupStat(currentLineup, group.keys, 'sum') }}</td>
+                                <td class="p-2 text-center font-bold text-blue-600 dark:text-blue-400">{{ getGroupStat(currentLineup, group.keys, 'avg') }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tactics & AI -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700">
+                <h3 class="text-lg font-bold mb-3">戰術適性與 AI 推薦</h3>
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button v-for="t in tactics" :key="t.id" 
+                            @click="selectedTactic = t.id"
+                            :class="selectedTactic === t.id ? 'bg-blue-500 dark:bg-blue-600 text-white' : 'bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-800 dark:text-slate-200'"
+                            class="p-2 rounded text-sm font-semibold transition">
+                        {{ t.name }}
+                    </button>
+                </div>
+                <div class="bg-blue-50 dark:bg-blue-900/20 border border-gray-200 dark:border-slate-700 p-3 rounded mb-4">
+                    <div class="text-sm text-gray-500 dark:text-slate-400 mb-1">當前陣容戰術評分：</div>
+                    <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">{{ calcTacticScore(getStarters(currentLineup), selectedTactic) }}</div>
+                    <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">{{ getTacticDesc(selectedTactic) }}</p>
+                </div>
+                <h4 class="font-bold mb-2 text-green-600 dark:text-green-400">🏆 AI 推薦最佳陣容 (全隊池)</h4>
+                <div class="bg-green-50 dark:bg-green-900/20 border border-gray-200 dark:border-slate-700 p-3 rounded max-h-[200px] overflow-y-auto">
+                    <div v-for="p in getRecommendedLineup(selectedTactic)" :key="p.id" class="flex justify-between border-b border-gray-200 dark:border-slate-700 last:border-0 py-1 text-sm">
+                        <span class="font-semibold text-gray-800 dark:text-slate-200">{{ p.nick }} - {{ p.name }}</span>
+                        <span class="text-gray-500 dark:text-slate-400">評分: {{ calcSingleTacticScore(p, selectedTactic).toFixed(1) }}</span>
+                    </div>
+                    <div class="mt-2 text-right font-bold text-green-600 dark:text-green-400">
+                        總評分: {{ calcTacticScore(getRecommendedLineup(selectedTactic), selectedTactic) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+createApp({
+    setup() {
+        // 主題切換邏輯
+        const savedTheme = localStorage.getItem('bb_theme');
+        const isDark = ref(savedTheme ? savedTheme === 'dark' : true); // 預設暗黑
+        
+        watch(isDark, (val) => {
+            localStorage.setItem('bb_theme', val ? 'dark' : 'light');
+        }, { immediate: true });
+        
+        const toggleTheme = () => { isDark.value = !isDark.value; };
+
+        // 基礎配置
+        const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
+        const roles = ['首發', '替換', '後備'];
+
+        // 1. 初始數據
+        const initialPlayersData = [
+            { id: 1, name: "Lee Shi Man", nick: "PG1", age: 29, height: 196, mins: 23, form: 7, jump: 8, range: 8, outDef: 9, ballHandle: 10, dribble: 10, passing: 9, insideShot: 6, insideDef: 2, rebound: 3, shotBlock: 1, stamina: 9, ft: 9, exp: 13 },
+            { id: 2, name: "Massamba Sadio", nick: "PG2", age: 24, height: 188, mins: 25, form: 7, jump: 8, range: 10, outDef: 8, ballHandle: 9, dribble: 5, passing: 10, insideShot: 8, insideDef: 5, rebound: 3, shotBlock: 7, stamina: 2, ft: 17, exp: 3 },
+            { id: 3, name: "Iván Moreno Cala", nick: "PG3", age: 22, height: 206, mins: 2, form: 4, jump: 3, range: 7, outDef: 10, ballHandle: 6, dribble: 9, passing: 8, insideShot: 8, insideDef: 4, rebound: 5, shotBlock: 9, stamina: 3, ft: 5, exp: 1 },
+            { id: 4, name: "Elvis Ridente", nick: "SG1", age: 22, height: 180, mins: 23, form: 7, jump: 10, range: 8, outDef: 9, ballHandle: 8, dribble: 8, passing: 9, insideShot: 3, insideDef: 3, rebound: 5, shotBlock: 1, stamina: 8, ft: 11, exp: 4 },
+            { id: 5, name: "Mario Guarizo", nick: "SG2", age: 23, height: 190, mins: 25, form: 6, jump: 9, range: 8, outDef: 10, ballHandle: 6, dribble: 8, passing: 4, insideShot: 5, insideDef: 2, rebound: 7, shotBlock: 2, stamina: 8, ft: 8, exp: 1 },
+            { id: 6, name: "Fan Siu Mun", nick: "SG3", age: 25, height: 203, mins: 0, form: 7, jump: 7, range: 4, outDef: 7, ballHandle: 4, dribble: 3, passing: 6, insideShot: 3, insideDef: 3, rebound: 7, shotBlock: 1, stamina: 3, ft: 6, exp: 1 },
+            { id: 7, name: "Emile Power", nick: "SF1", age: 19, height: 188, mins: 34, form: 7, jump: 10, range: 7, outDef: 7, ballHandle: 11, dribble: 11, passing: 5, insideShot: 10, insideDef: 8, rebound: 5, shotBlock: 4, stamina: 6, ft: 10, exp: 1 },
+            { id: 8, name: "Jan Jahiloo", nick: "SF2", age: 27, height: 193, mins: 9, form: 6, jump: 9, range: 7, outDef: 9, ballHandle: 8, dribble: 9, passing: 6, insideShot: 9, insideDef: 10, rebound: 4, shotBlock: 4, stamina: 4, ft: 12, exp: 5 },
+            { id: 9, name: "Cheung Tze Man", nick: "SF3", age: 29, height: 206, mins: 0, form: 7, jump: 5, range: 2, outDef: 2, ballHandle: 7, dribble: 4, passing: 1, insideShot: 6, insideDef: 5, rebound: 5, shotBlock: 7, stamina: 6, ft: 8, exp: 5 },
+            { id: 10, name: "Ndiomé Balde", nick: "PF1", age: 24, height: 188, mins: 11, form: 5, jump: 9, range: 5, outDef: 7, ballHandle: 9, dribble: 7, passing: 8, insideShot: 8, insideDef: 5, rebound: 10, shotBlock: 10, stamina: 6, ft: 18, exp: 4 },
+            { id: 11, name: "Abdoul Mendy", nick: "PF2", age: 22, height: 198, mins: 34, form: 8, jump: 8, range: 3, outDef: 8, ballHandle: 3, dribble: 6, passing: 8, insideShot: 9, insideDef: 10, rebound: 4, shotBlock: 9, stamina: 2, ft: 18, exp: 3 },
+            { id: 12, name: "Lo Tsz Yu", nick: "PF3", age: 29, height: 206, mins: 0, form: 7, jump: 6, range: 7, outDef: 1, ballHandle: 6, dribble: 7, passing: 5, insideShot: 7, insideDef: 3, rebound: 7, shotBlock: 4, stamina: 6, ft: 4, exp: 6 },
+            { id: 13, name: "To Chung", nick: "C1", age: 28, height: 213, mins: 23, form: 7, jump: 3, range: 3, outDef: 5, ballHandle: 5, dribble: 2, passing: 7, insideShot: 9, insideDef: 11, rebound: 10, shotBlock: 6, stamina: 6, ft: 8, exp: 8 },
+            { id: 14, name: "Kwok Fai Kit", nick: "C2", age: 27, height: 206, mins: 25, form: 7, jump: 9, range: 1, outDef: 3, ballHandle: 3, dribble: 2, passing: 3, insideShot: 9, insideDef: 9, rebound: 9, shotBlock: 6, stamina: 5, ft: 9, exp: 7 },
+            { id: 15, name: "Lancelot Abry", nick: "C3", age: 20, height: 213, mins: 6, form: 3, jump: 8, range: 4, outDef: 1, ballHandle: 7, dribble: 3, passing: 3, insideShot: 6, insideDef: 9, rebound: 9, shotBlock: 7, stamina: 2, ft: 2, exp: 1 }
+        ];
+
+        // 2. LocalStorage - Players
+        const savedPlayers = localStorage.getItem('bb_players_v6');
+        const players = ref(savedPlayers ? JSON.parse(savedPlayers) : JSON.parse(JSON.stringify(initialPlayersData)));
+
+        // 3. LocalStorage - Lineups
+        const createEmptyLineup = () => {
+            const l = {};
+            positions.forEach(p => l[p] = { '首發': null, '替換': null, '後備': null });
+            return l;
+        };
+
+        const savedLineups = localStorage.getItem('bb_lineups_v6');
+        let initialLineups = [createEmptyLineup(), createEmptyLineup(), createEmptyLineup()];
+        
+        if (savedLineups) {
+            try {
+                const parsed = JSON.parse(savedLineups);
+                initialLineups = parsed.map(l => {
+                    const newL = {};
+                    positions.forEach(pos => {
+                        newL[pos] = {
+                            '首發': l[pos]['首發'] ? players.value.find(p => p.id === l[pos]['首發']) || null : null,
+                            '替換': l[pos]['替換'] ? players.value.find(p => p.id === l[pos]['替換']) || null : null,
+                            '後備': l[pos]['後備'] ? players.value.find(p => p.id === l[pos]['後備']) || null : null
+                        };
+                    });
+                    return newL;
+                });
+            } catch (e) { console.error("Load lineups error", e); }
+        }
+        const lineups = ref(initialLineups);
+
+        // 4. Watchers
+        watch(players, (newVal) => localStorage.setItem('bb_players_v6', JSON.stringify(newVal)), { deep: true });
+        watch(lineups, (newVal) => {
+            const dataToSave = newVal.map(l => {
+                const savedL = {};
+                positions.forEach(pos => {
+                    savedL[pos] = {
+                        '首發': l[pos]['首發'] ? l[pos]['首發'].id : null,
+                        '替換': l[pos]['替換'] ? l[pos]['替換'].id : null,
+                        '後備': l[pos]['後備'] ? l[pos]['後備'].id : null
+                    };
+                });
+                return savedL;
+            });
+            localStorage.setItem('bb_lineups_v6', JSON.stringify(dataToSave));
+        }, { deep: true });
+
+        const resetData = () => { 
+            if(confirm('確定要重置所有球員數據為初始狀態嗎？')) {
+                players.value = JSON.parse(JSON.stringify(initialPlayersData));
+                const savedLineupsStr = localStorage.getItem('bb_lineups_v6');
+                if (savedLineupsStr) {
+                    const parsed = JSON.parse(savedLineupsStr);
+                    lineups.value = parsed.map(l => {
+                        const newL = {};
+                        positions.forEach(pos => {
+                            newL[pos] = {
+                                '首發': l[pos]['首發'] ? players.value.find(p => p.id === l[pos]['首發']) || null : null,
+                                '替換': l[pos]['替換'] ? players.value.find(p => p.id === l[pos]['替換']) || null : null,
+                                '後備': l[pos]['後備'] ? players.value.find(p => p.id === l[pos]['後備']) || null : null
+                            };
+                        });
+                        return newL;
+                    });
+                }
+            } 
+        };
+
+        // 5. 狀態配置
+        const currentTab = ref('management');
+        const currentLineup = ref(0);
+        const compareA = ref(0);
+        const compareB = ref(1);
+        const selectedTactic = ref('fast_break');
+
+        // 6. 計算與方法
+        const calcOutside = (p) => p.jump + p.range + p.outDef + p.ballHandle + p.dribble + p.passing;
+        const calcInside = (p) => p.insideShot + p.insideDef + p.rebound + p.shotBlock;
+        const calcTotal = (p) => calcOutside(p) + calcInside(p) + p.stamina + p.ft + p.exp;
+
+        const statGroups = [
+            { label: '🟢 外線總和', keys: ['jump', 'range', 'outDef', 'ballHandle', 'dribble', 'passing'], color: 'text-green-600 dark:text-green-400' },
+            { label: '🔴 內線總和', keys: ['insideShot', 'insideDef', 'rebound', 'shotBlock'], color: 'text-red-600 dark:text-red-400' },
+            { label: '🟡 體能/罰球/經驗', keys: ['stamina', 'ft', 'exp'], color: 'text-yellow-600 dark:text-yellow-400' },
+            { label: '📏 平均身高', keys: ['height'], color: 'text-gray-700 dark:text-slate-300' },
+            { label: '🎂 平均年齡', keys: ['age'], color: 'text-gray-700 dark:text-slate-300' }
+        ];
+
+        const outsideKeys = ['jump', 'range', 'outDef', 'ballHandle', 'dribble', 'passing'];
+        const insideKeys = ['insideShot', 'insideDef', 'rebound', 'shotBlock'];
+
+        const tactics = [
+            { id: 'fast_break', name: '⚡ 快攻戰術', desc: '依賴控球、運球、體能與傳球。' },
+            { id: 'zone_def', name: '🛡️ 聯防戰術', desc: '依賴外防、內防、範圍與籃板。' },
+            { id: 'inside_post', name: '🏀 內線單打', desc: '依賴內投、籃板、內防與身高。' },
+            { id: 'perimeter', name: '🎯 外線投射', desc: '依賴跳投、範圍與外線能力。' }
+        ];
+
+        const getTacticDesc = (id) => tactics.find(t => t.id === id)?.desc || '';
+        const getLineupPlayer = (lineupIdx, pos, role) => lineups.value[lineupIdx][pos][role];
+        const getStarters = (lineupIdx) => positions.map(pos => lineups.value[lineupIdx][pos]['首發']).filter(p => p !== null);
+
+        // 拖拽
+        const dragStart = (event, player) => event.dataTransfer.setData('playerId', player.id);
+        const dropPlayer = (event, pos, role) => {
+            const playerId = parseInt(event.dataTransfer.getData('playerId'));
+            const player = players.value.find(p => p.id === playerId);
+            if (player) lineups.value[currentLineup.value][pos][role] = player;
+        };
+        const quickAssign = (player) => {
+            for (let pos of positions) { if (!lineups.value[currentLineup.value][pos]['首發']) { lineups.value[currentLineup.value][pos]['首發'] = player; return; } }
+        };
+        const removePlayer = (pos, role) => lineups.value[currentLineup.value][pos][role] = null;
+
+        // 戰術
+        const calcSingleTacticScore = (player, tacticId) => {
+            if (!player) return 0;
+            switch (tacticId) {
+                case 'fast_break': return player.ballHandle * 0.3 + player.dribble * 0.2 + player.stamina * 0.3 + player.passing * 0.2;
+                case 'zone_def': return player.outDef * 0.3 + player.insideDef * 0.3 + player.range * 0.2 + player.rebound * 0.2;
+                case 'inside_post': return player.insideShot * 0.4 + player.rebound * 0.3 + player.insideDef * 0.2 + (player.height / 30) * 0.1;
+                case 'perimeter': return player.jump * 0.4 + player.range * 0.3 + calcOutside(player) * 0.2 + player.ft * 0.1;
+                default: return 0;
+            }
+        };
+        const calcTacticScore = (playerList, tacticId) => playerList.reduce((sum, p) => sum + calcSingleTacticScore(p, tacticId), 0).toFixed(1);
+        const getRecommendedLineup = (tacticId) => [...players.value].sort((a, b) => calcSingleTacticScore(b, tacticId) - calcSingleTacticScore(a, tacticId)).slice(0, 5);
+
+        // 統計
+        const getGroupStat = (lineupIdx, keys, type) => {
+            const starters = getStarters(lineupIdx);
+            if (starters.length === 0) return 0;
+            let sum = 0;
+            starters.forEach(p => {
+                if (keys.includes('height')) sum += p.height;
+                else if (keys.includes('age')) sum += p.age;
+                else keys.forEach(k => sum += (p[k] || 0));
+            });
+            return type === 'sum' ? sum : (sum / starters.length).toFixed(1);
+        };
+
+        // 內外線對比 Summary
+        const getComparisonSummary = () => {
+            const sumA_out = getGroupStat(compareA.value, outsideKeys, 'sum');
+            const avgA_out = parseFloat(getGroupStat(compareA.value, outsideKeys, 'avg'));
+            const sumB_out = getGroupStat(compareB.value, outsideKeys, 'sum');
+            const avgB_out = parseFloat(getGroupStat(compareB.value, outsideKeys, 'avg'));
+            
+            const sumA_in = getGroupStat(compareA.value, insideKeys, 'sum');
+            const avgA_in = parseFloat(getGroupStat(compareA.value, insideKeys, 'avg'));
+            const sumB_in = getGroupStat(compareB.value, insideKeys, 'sum');
+            const avgB_in = parseFloat(getGroupStat(compareB.value, insideKeys, 'avg'));
+            
+            return {
+                out: { sumA: sumA_out, avgA: avgA_out, sumB: sumB_out, avgB: avgB_out, diffAvg: (avgA_out - avgB_out).toFixed(1) },
+                in: { sumA: sumA_in, avgA: avgA_in, sumB: sumB_in, avgB: avgB_in, diffAvg: (avgA_in - avgB_in).toFixed(1) }
+            };
+        };
+
+        // 單項對比表格數據
+        const allStatsKeys = [
+            { key: 'jump', label: '跳投' }, { key: 'range', label: '範圍' }, { key: 'outDef', label: '外防' },
+            { key: 'ballHandle', label: '控球' }, { key: 'dribble', label: '運球' }, { key: 'passing', label: '傳球' },
+            { key: 'insideShot', label: '內投' }, { key: 'insideDef', label: '內防' }, { key: 'rebound', label: '籃板' },
+            { key: 'shotBlock', label: '封截' }, { key: 'stamina', label: '體能' }, { key: 'ft', label: '罰球' },
+            { key: 'exp', label: '經驗' }, { key: 'height', label: '身高' }, { key: 'age', label: '年齡' }
+        ];
+        const getComparisonData = () => {
+            const startersA = getStarters(compareA.value);
+            const startersB = getStarters(compareB.value);
+            return allStatsKeys.map(stat => {
+                const sumA = startersA.reduce((a, p) => a + (p[stat.key] || 0), 0);
+                const avgA = startersA.length ? (sumA / startersA.length).toFixed(1) : 0;
+                const sumB = startersB.reduce((a, p) => a + (p[stat.key] || 0), 0);
+                const avgB = startersB.length ? (sumB / startersB.length).toFixed(1) : 0;
+                const diff = (parseFloat(avgA) - parseFloat(avgB)).toFixed(1);
+                return { ...stat, sumA, avgA, sumB, avgB, diff };
+            });
+        };
+
+        // 圖表 (動態顏色適配)
+        let radarChartInstance = null;
+        let compareChartInstance = null;
+        
+        const chartTextColor = computed(() => isDark.value ? '#e2e8f0' : '#374151');
+        const chartGridColor = computed(() => isDark.value ? '#475569' : '#d1d5db');
+
+        const renderRadarChart = () => {
+            const ctx = document.getElementById('radarChart');
+            if (!ctx) return;
+            if (radarChartInstance) radarChartInstance.destroy();
+            const starters = getStarters(currentLineup.value);
+            if (starters.length === 0) return;
+
+            const labels = ['外線', '內線', '體能', '罰球', '經驗', '身高(均)'];
+            const data = [
+                starters.reduce((a, p) => a + calcOutside(p), 0) / starters.length,
+                starters.reduce((a, p) => a + calcInside(p), 0) / starters.length,
+                starters.reduce((a, p) => a + p.stamina, 0) / starters.length,
+                starters.reduce((a, p) => a + p.ft, 0) / starters.length,
+                starters.reduce((a, p) => a + p.exp, 0) / starters.length,
+                starters.reduce((a, p) => a + p.height, 0) / starters.length / 10
+            ];
+
+            radarChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '陣容 ' + (currentLineup.value + 1),
+                        data: data,
+                        borderColor: 'rgb(59, 130, 246)', 
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)'
+                    }]
+                },
+                options: {
+                    plugins: { legend: { labels: { color: chartTextColor.value } } },
+                    scales: {
+                        r: {
+                            angleLines: { color: chartGridColor.value },
+                            grid: { color: chartGridColor.value },
+                            pointLabels: { color: chartTextColor.value, font: { size: 11 } },
+                            ticks: { color: chartTextColor.value, backdropColor: 'transparent' },
+                            suggestedMin: 0, suggestedMax: 60
+                        }
+                    }
+                }
+            });
+        };
+
+        const renderCompareChart = () => {
+            const ctx = document.getElementById('compareChart');
+            if (!ctx) return;
+            if (compareChartInstance) compareChartInstance.destroy();
+
+            const getAvgStats = (idx) => {
+                const starters = getStarters(idx);
+                if (starters.length === 0) return Array(6).fill(0);
+                return [
+                    starters.reduce((a, p) => a + calcOutside(p), 0) / starters.length,
+                    starters.reduce((a, p) => a + calcInside(p), 0) / starters.length,
+                    starters.reduce((a, p) => a + p.stamina, 0) / starters.length,
+                    starters.reduce((a, p) => a + p.ft, 0) / starters.length,
+                    starters.reduce((a, p) => a + p.exp, 0) / starters.length,
+                    starters.reduce((a, p) => a + p.height, 0) / starters.length / 10
+                ];
+            };
+
+            compareChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['外線', '內線', '體能', '罰球', '經驗', '身高(均)'],
+                    datasets: [
+                        { label: '陣容 A (' + (compareA.value + 1) + ')', data: getAvgStats(compareA.value), borderColor: 'rgb(59, 130, 246)', backgroundColor: 'rgba(59, 130, 246, 0.2)' },
+                        { label: '陣容 B (' + (compareB.value + 1) + ')', data: getAvgStats(compareB.value), borderColor: 'rgb(239, 68, 68)', backgroundColor: 'rgba(239, 68, 68, 0.2)' }
+                    ]
+                },
+                options: {
+                    plugins: { legend: { labels: { color: chartTextColor.value } } },
+                    scales: {
+                        r: {
+                            angleLines: { color: chartGridColor.value },
+                            grid: { color: chartGridColor.value },
+                            pointLabels: { color: chartTextColor.value, font: { size: 11 } },
+                            ticks: { color: chartTextColor.value, backdropColor: 'transparent' },
+                            suggestedMin: 0, suggestedMax: 60
+                        }
+                    }
+                }
+            });
+        };
+
+        watch([currentTab, currentLineup], () => { if (currentTab.value === 'lineup_analysis') nextTick(() => renderRadarChart()); });
+        watch([compareA, compareB], () => { if (currentTab.value === 'lineup_analysis') nextTick(() => renderCompareChart()); });
+        
+        // 主題切換時重新渲染圖表
+        watch(isDark, () => {
+            if (currentTab.value === 'lineup_analysis') {
+                nextTick(() => {
+                    renderRadarChart();
+                    renderCompareChart();
+                });
+            }
+        });
+
+        onMounted(() => {
+            if (currentTab.value === 'lineup_analysis') nextTick(() => { renderRadarChart(); renderCompareChart(); });
+        });
+
+        return {
+            isDark, toggleTheme,
+            players, currentTab, positions, roles, currentLineup, lineups,
+            compareA, compareB, selectedTactic, tactics, statGroups, allStatsKeys,
+            calcOutside, calcInside, calcTotal, getLineupPlayer, getStarters,
+            dragStart, dropPlayer, quickAssign, removePlayer,
+            calcSingleTacticScore, calcTacticScore, getRecommendedLineup,
+            getGroupStat, getTacticDesc, resetData, getComparisonData, getComparisonSummary
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
